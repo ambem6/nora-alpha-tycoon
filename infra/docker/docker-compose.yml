@@ -1,0 +1,98 @@
+version: '3.8'
+
+services:
+  # -------------------------------------------------------
+  # 1. DATA LAYER (Postgres)
+  # -------------------------------------------------------
+  db:
+    image: postgres:15-alpine
+    container_name: nora_db
+    restart: always
+    environment:
+      POSTGRES_USER: ${DB_USER:-nora_user}
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-secure_password}
+      POSTGRES_DB: ${DB_NAME:-nora_tycoon}
+    ports:
+      - "5432:5432" # Exposed for local dev tools only
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    networks:
+      - nora_net
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U nora_user"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # -------------------------------------------------------
+  # 2. CACHE LAYER (Redis)
+  # -------------------------------------------------------
+  redis:
+    image: redis:7-alpine
+    container_name: nora_redis
+    restart: always
+    command: redis-server --save 60 1 --loglevel warning
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    networks:
+      - nora_net
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # -------------------------------------------------------
+  # 3. BACKEND GATEWAY (Node.js + Rust Core)
+  # -------------------------------------------------------
+  gateway:
+    build:
+      context: ../..
+      dockerfile: infra/docker/Dockerfile.server
+    container_name: nora_gateway
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    environment:
+      NODE_ENV: production
+      PORT: 3000
+      DATABASE_URL: postgres://${DB_USER:-nora_user}:${DB_PASSWORD:-secure_password}@db:5432/${DB_NAME:-nora_tycoon}?schema=public
+      REDIS_URL: redis://redis:6379/0
+      TELEGRAM_BOT_TOKEN: ${TELEGRAM_BOT_TOKEN}
+      SESSION_SECRET: ${SESSION_SECRET}
+    ports:
+      - "3000:3000"
+    networks:
+      - nora_net
+    deploy:
+      resources:
+        limits:
+          cpus: '1.0'
+          memory: 1G
+
+  # -------------------------------------------------------
+  # 4. FRONTEND (Nginx serving React Build)
+  # -------------------------------------------------------
+  client:
+    build:
+      context: ../..
+      dockerfile: infra/docker/Dockerfile.client
+    container_name: nora_client
+    restart: always
+    ports:
+      - "80:80"
+    networks:
+      - nora_net
+
+volumes:
+  postgres_data:
+  redis_data:
+
+networks:
+  nora_net:
+    driver: bridge
