@@ -1,0 +1,31 @@
+{
+  "name": "nora-alpha-tycoon",
+  "private": true,
+  "version": "0.1.0",
+  "workspaces": [
+    "server/core",
+    "server/gateway",
+    "client",
+    "shared"
+  ],
+  "scripts": {
+    "build": "turbo run build",
+    "dev": "turbo run dev",
+    "test": "turbo run test",
+    "lint": "turbo run lint",
+    "clean": "rm -rf node_modules **/*/node_modules **/*/dist **/*/target",
+    "db:migrate": "npx prisma migrate dev --schema=./prisma/schema.prisma",
+    "db:generate": "npx prisma generate --schema=./prisma/schema.prisma"
+  },
+  "devDependencies": {
+    "turbo": "^1.10.0",
+    "prettier": "^3.0.0",
+    "typescript": "^5.2.0",
+    "prisma": "^5.3.1",
+    "ts-node": "^10.9.1"
+  },
+  "engines": {
+    "node": ">=20.0.0",
+    "npm": ">=9.0.0"
+  }
+}
