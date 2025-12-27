@@ -1,0 +1,53 @@
+# --------------------------------------------------------
+# STAGE 1: BUILDER
+# --------------------------------------------------------
+FROM node:20-bookworm AS builder
+
+WORKDIR /app
+
+# 1. Install Dependencies
+COPY package.json package-lock.json* ./
+COPY shared/package.json ./shared/
+COPY client/package.json ./client/
+
+# Install root deps (for workspaces/turborepo logic if used, or just to satisfy structure)
+RUN npm install
+
+# 2. Copy Source
+COPY shared ./shared
+COPY client ./client
+
+# 3. Build Client
+# This expects the "build" script in client/package.json to run "vite build"
+WORKDIR /app/client
+RUN npm run build
+
+# --------------------------------------------------------
+# STAGE 2: NGINX SERVER
+# --------------------------------------------------------
+FROM nginx:alpine
+
+# 1. Remove default Nginx static assets
+RUN rm -rf /usr/share/nginx/html/*
+
+# 2. Copy Built Assets from Builder
+COPY --from=builder /app/client/dist /usr/share/nginx/html
+
+# 3. Configure Nginx for SPA (Single Page Application)
+# We create a simple config inline to handle React Router history mode
+RUN echo 'server { \
+    listen 80; \
+    root /usr/share/nginx/html; \
+    index index.html; \
+    location / { \
+        try_files $uri $uri/ /index.html; \
+    } \
+    location /assets/ { \
+        expires 1y; \
+        add_header Cache-Control "public"; \
+    } \
+}' > /etc/nginx/conf.d/default.conf
+
+EXPOSE 80
+
+CMD ["nginx", "-g", "daemon off;"]
