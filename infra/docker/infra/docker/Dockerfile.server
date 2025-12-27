@@ -1,0 +1,85 @@
+# --------------------------------------------------------
+# STAGE 1: BUILDER (Rust + Node)
+# --------------------------------------------------------
+FROM node:20-bookworm AS builder
+
+# 1. Install Rust Toolchain
+# NAPI-RS requires a working Rust environment to compile the core
+RUN curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y
+ENV PATH="/root/.cargo/bin:${PATH}"
+
+WORKDIR /app
+
+# 2. Copy Dependency Definitions
+# We copy package files first to leverage Docker layer caching
+COPY package.json package-lock.json* ./
+COPY prisma ./prisma/
+COPY shared/package.json ./shared/
+COPY server/core/package.json ./server/core/
+COPY server/gateway/package.json ./server/gateway/
+COPY server/core/Cargo.toml ./server/core/
+COPY server/core/build.rs ./server/core/
+
+# 3. Install Dependencies (Root)
+RUN npm install
+
+# 4. Copy Source Code
+COPY shared ./shared
+COPY server ./server
+
+# 5. Generate Prisma Client
+# This ensures the client is built for the container's architecture (linux-musl/glibc)
+RUN npx prisma generate
+
+# 6. Build Rust Core
+# This runs `napi build --release` inside server/core
+# Produces: server/core/index.node and server/core/index.js
+WORKDIR /app/server/core
+RUN npm run build
+
+# 7. Build Gateway (TypeScript)
+# Produces: server/gateway/dist/
+WORKDIR /app/server/gateway
+RUN npm run build
+
+# --------------------------------------------------------
+# STAGE 2: RUNNER (Slim Production Image)
+# --------------------------------------------------------
+FROM node:20-bookworm-slim AS runner
+
+WORKDIR /app/server/gateway
+
+# 1. Environment Setup
+ENV NODE_ENV=production
+ENV PORT=3000
+
+# 2. Copy Production Dependencies
+# We install dependencies specific to the gateway to keep image small
+COPY server/gateway/package.json ./
+# We also need the core package.json so Node can resolve the module
+COPY server/core/package.json ../core/
+
+RUN npm install --omit=dev
+
+# 3. Copy Built Artifacts
+# A. Gateway JS
+COPY --from=builder /app/server/gateway/dist ./dist
+
+# B. Rust Binary (The Critical Bridge)
+# We must preserve the relative path structure (../core) used by imports
+COPY --from=builder /app/server/core/index.node ../core/
+COPY --from=builder /app/server/core/index.js ../core/
+
+# C. Prisma Client & Schema
+COPY --from=builder /app/node_modules/.prisma ../../node_modules/.prisma
+COPY --from=builder /app/node_modules/@prisma ../../node_modules/@prisma
+COPY --from=builder /app/prisma ../../prisma
+
+# 4. Healthcheck & User
+# Run as non-root user for security
+USER node
+
+EXPOSE 3000
+
+# 5. Launch
+CMD ["node", "dist/server.js"]
