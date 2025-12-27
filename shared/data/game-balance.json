@@ -1,0 +1,42 @@
+{
+  "core": {
+    "precisionBasis": 10000,
+    "maxOfflineSeconds": 86400
+  },
+  "districts": {
+    "mining_district": {
+      "id": "mining_district",
+      "name": "Mining District",
+      "baseCost": 100000,
+      "baseOutput": 10000,
+      "costGrowth": 10700
+    },
+    "privacy_vault": {
+      "id": "privacy_vault",
+      "name": "Privacy Vault",
+      "baseCost": 1000000,
+      "baseOutput": 80000,
+      "costGrowth": 10800
+    },
+    "compliance_tower": {
+      "id": "compliance_tower",
+      "name": "Compliance Tower",
+      "baseCost": 10000000,
+      "baseOutput": 400000,
+      "costGrowth": 10900
+    }
+  },
+  "prestige": {
+    "unlockLevel": 50,
+    "bonusPerPrestige": 5000
+  },
+  "lab": {
+    "unlockLevel": 50,
+    "baseExchangeRate": 100
+  },
+  "social": {
+    "referralBonus": 500,
+    "boostDurationSec": 120,
+    "boostMultiplier": 1000
+  }
+}
