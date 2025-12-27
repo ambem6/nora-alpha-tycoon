@@ -1,0 +1,180 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// --------------------------------------------------------
+// USER IDENTITY & SOCIAL GRAPH
+// --------------------------------------------------------
+
+model User {
+  id              String   @id @default(uuid())
+  telegramId      BigInt   @unique // Telegram User ID (BigInt for >32bit support)
+  username        String?
+  firstName       String?
+  lastName        String?
+  languageCode    String?  @default("en")
+  isPremium       Boolean  @default(false)
+  
+  // Security & Auth
+  authNonce       String   @default(uuid()) // Rotates on every login
+  lastLoginAt     DateTime @default(now())
+  createdAt       DateTime @default(now())
+  
+  // Progression Summary (For Leaderboards/Querying without full engine load)
+  lifetimeNp      BigInt   @default(0) // Total Nora Points earned
+  currentPsi      Int      @default(0) // Current Potential (ψ)
+  prestigeLevel   Int      @default(0) // Protocol Level
+  
+  // Relationships
+  allianceId      String?
+  alliance        Alliance? @relation(fields: [allianceId], references: [id])
+  
+  referrals       Referral[] @relation("Referrer")
+  referredBy      Referral?  @relation("Referred")
+
+  // Game Data
+  events          GameEvent[]
+  snapshots       GameSnapshot[]
+  
+  // Payments
+  payments        Payment[]
+
+  @@index([telegramId])
+  @@index([lifetimeNp(sort: Desc)])
+}
+
+model Alliance {
+  id          String   @id @default(uuid())
+  name        String   @unique
+  description String?
+  avatarUrl   String?  // Procedural generation seed
+  
+  // Guild Stats
+  totalMembers Int     @default(0)
+  totalNp      BigInt  @default(0)
+  
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+  
+  members      User[]
+  
+  @@index([totalNp(sort: Desc)])
+}
+
+model Referral {
+  id          String   @id @default(uuid())
+  
+  referrerId  String
+  referrer    User     @relation("Referrer", fields: [referrerId], references: [id])
+  
+  refereeId   String   @unique
+  referee     User     @relation("Referred", fields: [refereeId], references: [id])
+  
+  createdAt   DateTime @default(now())
+  
+  // Reward Status
+  isClaimed   Boolean  @default(false)
+}
+
+// --------------------------------------------------------
+// EVENT SOURCING (THE TRUTH)
+// --------------------------------------------------------
+
+model GameEvent {
+  id              String   @id @default(uuid())
+  userId          String
+  user            User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  
+  // Event Metadata
+  eventType       String   // E.g., "TICK_BATCH", "UPGRADE_DISTRICT", "PRESTIGE"
+  payload         Json     // The immutable input data for the Rust reducer
+  
+  // Time Canonicality
+  clientTimestamp BigInt   // Advisory only (ms)
+  serverTimestamp BigInt   // The Authority (ms) - mapped from Rust
+  
+  createdAt       DateTime @default(now())
+
+  @@index([userId, serverTimestamp])
+}
+
+// --------------------------------------------------------
+// SNAPSHOTS (CACHE)
+// --------------------------------------------------------
+
+model GameSnapshot {
+  id              String   @id @default(uuid())
+  userId          String
+  user            User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  
+  // Versioning for Rust Struct Compatibility
+  version         Int      // Matches Engine Version
+  
+  // The Blob
+  data            Json     // Full JSON serialization of the Rust State struct
+  
+  // Replay Optimization
+  lastEventId     String   // The last event applied to this snapshot
+  serverTimestamp BigInt   // Timestamp of the state
+  
+  createdAt       DateTime @default(now())
+  
+  @@index([userId, version])
+}
+
+// --------------------------------------------------------
+// ANALYTICS & COMPLIANCE
+// --------------------------------------------------------
+
+model AuditLog {
+  id        String   @id @default(uuid())
+  userId    String?
+  action    String
+  severity  String   // "INFO", "WARN", "CRITICAL"
+  details   Json
+  ipHash    String?
+  createdAt DateTime @default(now())
+}
+
+// --------------------------------------------------------
+// PAYMENTS
+// --------------------------------------------------------
+
+model Payment {
+  id              String   @id @default(uuid())
+  userId          String
+  user            User     @relation(fields: [userId], references: [id])
+  
+  // Provider Details
+  provider        PaymentProvider // "STARS" | "TON"
+  externalId      String   @unique // Telegram Payment Charge ID or TON Tx Hash
+  
+  // Transaction Details
+  amount          BigInt   // Amount in smallest unit (e.g. 1 Star, 0.000000001 TON)
+  currency        String   // "XTR" or "TON"
+  status          PaymentStatus @default(PENDING)
+  
+  // Product
+  packId          String   // e.g. "psi_pack_small"
+  
+  createdAt       DateTime @default(now())
+  completedAt     DateTime?
+
+  @@index([userId])
+}
+
+enum PaymentProvider {
+  STARS
+  TON
+}
+
+enum PaymentStatus {
+  PENDING
+  COMPLETED
+  FAILED
+}
