@@ -1,42 +1,88 @@
+// STRUCTURE FROZEN: Updated server/core/src/models/events.rs
+
 use serde::{Deserialize, Serialize};
-use crate::models::state::{DistrictId, SpecializationPath};
+use crate::models::state::{DistrictId, SpecializationPath, Timestamp};
 
+/// The exhaustive list of actions that can mutate the Game State.
+/// Serializes to a JSON object with a "type" field matching the TypeScript definition.
 #[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(tag = "type", content = "payload")]
+#[serde(tag = "type", rename_all = "SCREAMING_SNAKE_CASE")] // Matches TS 'type': 'TICK_OFFLINE' etc.
 pub enum GameEvent {
-    #[serde(rename = "TICK_OFFLINE")]
-    TickOffline { timestamp: u64, delta_ms: u64 },
     
-    #[serde(rename = "TAP_GENERATE")]
-    TapGenerate { timestamp: u64, count: u32 },
-    
-    #[serde(rename = "UPGRADE_DISTRICT")]
-    UpgradeDistrict { timestamp: u64, district_id: DistrictId },
-    
-    #[serde(rename = "SET_TUNING")]
-    SetTuning { timestamp: u64, district_id: DistrictId, value: u32 },
-    
-    #[serde(rename = "CHOOSE_SPEC")]
-    ChooseSpec { timestamp: u64, district_id: DistrictId, path: SpecializationPath },
-    
-    #[serde(rename = "PRESTIGE_RESET")]
-    PrestigeReset { timestamp: u64 },
-    
-    #[serde(rename = "BOOST_ACTIVATE")]
-    BoostActivate { timestamp: u64, boost_id: String },
-    
-    #[serde(rename = "PROTOCOL_UNLOCK")]
-    ProtocolUnlock { timestamp: u64 },
+    /// Server-calculated time jump (offline progress or normal tick batch).
+    #[serde(rename_all = "camelCase")]
+    TickOffline {
+        timestamp: Timestamp,
+        delta_ms: u64,
+    },
 
-    #[serde(rename = "PROTOCOL_INTERACTION")]
-    ProtocolInteraction { timestamp: u64, action: String },
+    /// Manual interaction from the user (Tapping).
+    #[serde(rename_all = "camelCase")]
+    TapGenerate {
+        timestamp: Timestamp,
+        count: u32,
+    },
 
-    #[serde(rename = "PROTOCOL_FORK")]
-    ProtocolFork { timestamp: u64, fork_type: String },
+    /// Purchasing a level upgrade for a specific district.
+    #[serde(rename_all = "camelCase")]
+    UpgradeDistrict {
+        timestamp: Timestamp,
+        district_id: DistrictId,
+    },
+
+    /// Adjusting the slider (0-100) for a district (Lvl 25+).
+    #[serde(rename_all = "camelCase")]
+    SetTuning {
+        timestamp: Timestamp,
+        district_id: DistrictId,
+        value: u8,
+    },
+
+    /// Selecting a permanent path for a district (Lvl 50+).
+    #[serde(rename_all = "camelCase")]
+    ChooseSpec {
+        timestamp: Timestamp,
+        district_id: DistrictId,
+        path: SpecializationPath,
+    },
+
+    /// Triggering a Soft Reset to gain Prestige currency/Meta-progression.
+    #[serde(rename_all = "camelCase")]
+    PrestigeReset {
+        timestamp: Timestamp,
+    },
+
+    /// Activating a temporary boost (e.g., from Social actions).
+    #[serde(rename_all = "camelCase")]
+    BoostActivate {
+        timestamp: Timestamp,
+        boost_id: String,
+    },
+
+    /// Unlocks the Protocol Ascension Layer (Level 50+ Req).
+    #[serde(rename_all = "camelCase")]
+    ProtocolUnlock {
+        timestamp: Timestamp,
+    },
+    
+    /// Generic interaction with the active chain (e.g., "MIX_Privacy").
+    #[serde(rename_all = "camelCase")]
+    ProtocolInteraction {
+        timestamp: Timestamp,
+        action: String,
+    },
+    
+    /// Triggers a Fork State Transform.
+    #[serde(rename_all = "camelCase")]
+    ProtocolFork {
+        timestamp: Timestamp,
+        fork_type: String, // "GENESIS" | "REGULATORY" | "UNIFICATION"
+    },
 }
 
 impl GameEvent {
-    pub fn timestamp(&self) -> u64 {
+    /// Helper to extract the timestamp from any event variant.
+    pub fn timestamp(&self) -> Timestamp {
         match self {
             GameEvent::TickOffline { timestamp, .. } => *timestamp,
             GameEvent::TapGenerate { timestamp, .. } => *timestamp,
