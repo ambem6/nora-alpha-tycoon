@@ -1,9 +1,4 @@
-File: server/core/src/models/state.rs
-Responsibility
- * Defines the memory layout of the Game State in Rust.
- * Implements Serialize / Deserialize for passing data to/from Node.js.
- * Enforces type safety for Fixed-Point arithmetic (using i64).
-<!-- end list -->
+
 // STRUCTURE FROZEN: server/core/src/models/state.rs
 
 use serde::{Deserialize, Serialize};
